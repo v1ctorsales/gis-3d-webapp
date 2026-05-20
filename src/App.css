@@ -1,0 +1,26 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.app-header {
+  padding: 0.75rem 1rem;
+  background: #1a1a1a;
+  color: #fff;
+  border-bottom: 1px solid #333;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.app-main {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}

@@ -1,0 +1,97 @@
+.viewer {
+  position: absolute;
+  inset: 0;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.statusOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ddd;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.backButton {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 2;
+  padding: 0.55rem 1rem;
+  background: rgba(20, 20, 20, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.backButton:hover {
+  background: rgba(40, 40, 40, 0.9);
+}
+
+.controls {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  padding: 0.85rem 1rem;
+  background: rgba(20, 20, 20, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  width: 240px;
+  backdrop-filter: blur(8px);
+  font-size: 0.85rem;
+}
+
+.control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.control span:first-child {
+  opacity: 0.7;
+  font-size: 0.78rem;
+}
+
+.value {
+  font-family: "Menlo", "Consolas", monospace;
+  font-size: 0.85rem;
+}
+
+.control input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #2d7af7;
+}
+
+.stats {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.7;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.attribution {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  z-index: 2;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+}
