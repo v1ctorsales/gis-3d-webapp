@@ -1,25 +1,18 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
-export default function Terrain({ buildResult, texture }) {
+export default function Terrain({ buildResult, textureCanvas }) {
   const textureMap = useMemo(() => {
-    if (!texture) return null;
-    const tex = new THREE.CanvasTexture(texture);
+    if (!textureCanvas) return null;
+    const tex = new THREE.CanvasTexture(textureCanvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
     tex.needsUpdate = true;
     return tex;
-  }, [texture]);
+  }, [textureCanvas]);
 
-  // Dispose of GPU resources when geometry changes
-  useEffect(() => {
-    const geom = buildResult.geometry;
-    return () => geom.dispose();
-  }, [buildResult]);
-
-  useEffect(() => {
-    return () => textureMap?.dispose();
-  }, [textureMap]);
+  useEffect(() => () => buildResult.geometry.dispose(), [buildResult]);
+  useEffect(() => () => textureMap?.dispose(), [textureMap]);
 
   return (
     <mesh geometry={buildResult.geometry} castShadow receiveShadow>

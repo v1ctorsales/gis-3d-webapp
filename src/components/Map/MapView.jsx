@@ -9,23 +9,26 @@ import styles from "./MapView.module.css";
 const SATELLITE_STYLE = {
   version: 8,
   sources: {
-    "esri-world-imagery": {
+    "esri-satellite": {
       type: "raster",
       tiles: [
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       ],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+      tileSize: 512,
+      attribution: "Imagery © Esri",
+    },
+    "carto-labels": {
+      type: "raster",
+      tiles: [
+        "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 512,
+      attribution: "Labels © CARTO, © OpenStreetMap contributors",
     },
   },
   layers: [
-    {
-      id: "esri-world-imagery-layer",
-      type: "raster",
-      source: "esri-world-imagery",
-    },
+    { id: "satellite", type: "raster", source: "esri-satellite" },
+    { id: "labels", type: "raster", source: "carto-labels" },
   ],
 };
 

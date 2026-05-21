@@ -3,6 +3,7 @@ import * as THREE from "three";
 const SCENE_SIZE = 200; // Longest horizontal side in scene units
 const MAX_MESH_RES = 200; // Cap mesh subdivisions per side
 const EARTH_RADIUS_M = 6378137;
+const SEA_FLOOR_CLAMP_M = -50;
 
 function bboxSizeMeters(bbox) {
   const latSpanRad = ((bbox.north - bbox.south) * Math.PI) / 180;
@@ -23,6 +24,7 @@ function bboxSizeMeters(bbox) {
  */
 export function buildTerrainGeometry(heightmap, bbox, exaggeration = 2) {
   const { elevations, width, height, minElevation, maxElevation } = heightmap;
+  const displayMin = Math.max(minElevation, SEA_FLOOR_CLAMP_M);
 
   // Subsample so the mesh stays well under MAX_MESH_RES per side
   const stride = Math.max(1, Math.ceil(Math.max(width, height) / MAX_MESH_RES));
@@ -41,9 +43,9 @@ export function buildTerrainGeometry(heightmap, bbox, exaggeration = 2) {
   const startX = -sceneWidth / 2;
   const startZ = -sceneDepth / 2;
 
-  const elevRange = maxElevation - minElevation;
-  const baseDepthM = Math.max(elevRange * 0.3, 100);
-  const baseY = (minElevation - baseDepthM) * verticalScale;
+  const elevRange = maxElevation - displayMin;
+  const baseDepthM = Math.min(Math.max(elevRange * 0.2, 50), 300);
+  const baseY = (displayMin - baseDepthM) * verticalScale;
 
   const positions = [];
   const uvs = [];
@@ -54,7 +56,8 @@ export function buildTerrainGeometry(heightmap, bbox, exaggeration = 2) {
     for (let c = 0; c < cols; c++) {
       const srcX = c * stride;
       const srcY = r * stride;
-      const elev = elevations[srcY * width + srcX];
+      const elev = Math.max(elevations[srcY * width + srcX], SEA_FLOOR_CLAMP_M);
+
       positions.push(
         startX + c * stepX,
         elev * verticalScale,

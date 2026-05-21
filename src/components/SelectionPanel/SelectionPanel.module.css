@@ -81,3 +81,19 @@
 .secondary:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+.warning {
+  color: #b00020;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+}
+
+.areaOver {
+  color: #b00020;
+  font-weight: 600;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
