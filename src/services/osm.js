@@ -1,27 +1,36 @@
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const OVERPASS_URL =
+  import.meta.env.VITE_OVERPASS_URL ||
+  (import.meta.env.PROD
+    ? "/api/overpass"
+    : "https://overpass.private.coffee/api/interpreter");
 
-async function overpassFetch(query, { timeoutMs = 30000 } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+const TIMEOUT_MS = 30000;
+
+export async function overpassFetch(query) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(OVERPASS_URL, {
-      method: "POST",
-      body: "data=" + encodeURIComponent(query),
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw new Error(`Overpass error ${response.status}`);
+    let resp;
+    if (OVERPASS_URL.startsWith("/")) {
+      // Proxy próprio: usa GET para o Vercel cachear no edge
+      const url = `${OVERPASS_URL}?q=${encodeURIComponent(query)}`;
+      resp = await fetch(url, { signal: ctrl.signal });
+    } else {
+      // Mirror direto (dev): POST
+      resp = await fetch(OVERPASS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: query,
+        signal: ctrl.signal,
+      });
     }
-    return await response.json();
-  } catch (e) {
-    if (e.name === "AbortError") {
-      throw new Error("Overpass timed out — try a smaller area or retry");
+    if (!resp.ok) {
+      throw new Error(`Overpass ${resp.status}: ${resp.statusText}`);
     }
-    throw e;
+    return await resp.json();
   } finally {
-    clearTimeout(timer);
+    clearTimeout(t);
   }
 }
 

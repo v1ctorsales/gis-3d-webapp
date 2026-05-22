@@ -48,7 +48,7 @@ export default function Viewer3D({ bbox, onBack }) {
   }, [bbox]);
 
   // --- View options ---
-  const [exaggeration, setExaggeration] = useState(2);
+  const [exaggeration, setExaggeration] = useState(1);
   const [surface, setSurface] = useState("imagery"); // 'imagery' | 'hypsometric'
   const [showBuildings, setShowBuildings] = useState(false);
   const [showWater, setShowWater] = useState(false);
