@@ -1,17 +1,33 @@
-import { useEffect, useMemo } from "react";
-import { buildContoursGeometry, makeLevels } from "./buildContoursGeometry";
+import { useMemo } from "react";
+import { Line } from "@react-three/drei";
+import { buildContoursPoints, makeLevels } from "./buildContoursGeometry";
 
-export default function Contours({ heightmap, bounds, scale, spacing, color = "#ffffff" }) {
-  const geometry = useMemo(() => {
+export default function Contours({
+  heightmap,
+  bounds,
+  scale,
+  spacing,
+  color = "#ffffff",
+  lineWidth = 2,
+  opacity = 0.9,
+}) {
+  const points = useMemo(() => {
     const levels = makeLevels(heightmap.minElevation, heightmap.maxElevation, spacing);
-    return buildContoursGeometry(heightmap, bounds, scale, levels);
+    return buildContoursPoints(heightmap, bounds, scale, levels);
   }, [heightmap, bounds, scale, spacing]);
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  if (points.length === 0) return null;
 
   return (
-    <lineSegments geometry={geometry} renderOrder={3}>
-      <lineBasicMaterial color={color} transparent opacity={0.85} depthTest={true} />
-    </lineSegments>
+    <Line
+      points={points}
+      segments
+      color={color}
+      lineWidth={lineWidth}
+      transparent
+      opacity={opacity}
+      depthTest={false}
+      renderOrder={3}
+    />
   );
 }

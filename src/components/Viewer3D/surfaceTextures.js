@@ -67,9 +67,9 @@ export function buildAspectCanvas(heightmap, pixelSizeM) {
 }
 
 /** Hillshade: grayscale. */
-export function buildHillshadeCanvas(heightmap, pixelSizeM, sun) {
+export function buildHillshadeCanvas(heightmap, pixelSizeM, sun, zFactor = 1) {
   const { width, height } = heightmap;
-  const hs = computeHillshade(heightmap, pixelSizeM, sun);
+  const hs = computeHillshade(heightmap, pixelSizeM, sun, zFactor);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
