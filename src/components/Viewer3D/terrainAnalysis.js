@@ -32,3 +32,46 @@ export function computeSlope(hm, pixelSizeM) {
   }
   return out;
 }
+
+/**
+ * Aspect (downhill compass direction) at every cell, radians.
+ *   0 = N, π/2 = E, π = S, 3π/2 = W.
+ * NaN for flat cells.
+ *
+ * @param {{elevations: Float32Array, width: number, height: number}} hm
+ * @param {number} pixelSizeM
+ * @returns {Float32Array}
+ */
+export function computeAspect(hm, pixelSizeM) {
+  const { elevations, width, height } = hm;
+  const out = new Float32Array(width * height);
+  const at = (c, r) => {
+    const cc = c < 0 ? 0 : c >= width ? width - 1 : c;
+    const rr = r < 0 ? 0 : r >= height ? height - 1 : r;
+    return elevations[rr * width + cc];
+  };
+  const denom = 8 * pixelSizeM;
+  const TWO_PI = Math.PI * 2;
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      const a = at(c - 1, r - 1);
+      const b = at(c, r - 1);
+      const cc = at(c + 1, r - 1);
+      const d = at(c - 1, r);
+      const f = at(c + 1, r);
+      const g = at(c - 1, r + 1);
+      const h = at(c, r + 1);
+      const i = at(c + 1, r + 1);
+      const dzdx = (cc + 2 * f + i - (a + 2 * d + g)) / denom;
+      const dzdy = (g + 2 * h + i - (a + 2 * b + cc)) / denom;
+      if (dzdx === 0 && dzdy === 0) {
+        out[r * width + c] = NaN;
+        continue;
+      }
+      let aRad = Math.atan2(-dzdx, dzdy);
+      if (aRad < 0) aRad += TWO_PI;
+      out[r * width + c] = aRad;
+    }
+  }
+  return out;
+}

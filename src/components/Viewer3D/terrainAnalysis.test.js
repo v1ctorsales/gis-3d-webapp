@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSlope } from "./terrainAnalysis";
+import { computeSlope, computeAspect } from "./terrainAnalysis";
 
 function flat(width, height, value = 100) {
   const elevations = new Float32Array(width * height);
@@ -36,5 +36,22 @@ describe("computeSlope", () => {
   it("output length equals width * height", () => {
     const slope = computeSlope(flat(7, 5), 10);
     expect(slope.length).toBe(35);
+  });
+});
+
+describe("computeAspect", () => {
+  it("returns NaN for flat terrain", () => {
+    const aspect = computeAspect(flat(5, 5), 10);
+    expect(Number.isNaN(aspect[2 * 5 + 2])).toBe(true);
+  });
+
+  it("east-rising ramp faces west (≈ 3π/2)", () => {
+    const aspect = computeAspect(ramp(5, 5, 1), 1);
+    expect(aspect[2 * 5 + 2]).toBeCloseTo((3 * Math.PI) / 2, 2);
+  });
+
+  it("output length equals width * height", () => {
+    const aspect = computeAspect(flat(7, 5), 10);
+    expect(aspect.length).toBe(35);
   });
 });
