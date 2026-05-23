@@ -1,19 +1,8 @@
 import * as THREE from "three";
 import { marchingSquaresLevel } from "./marchingSquares";
+import { bilinear } from "../../utils/geo";
 
 const Y_OFFSET_UNITS = 0.2; // small lift so lines don't z-fight with terrain
-
-function bilinear(hm, x, y) {
-  const { elevations, width: W, height: H } = hm;
-  const x0 = Math.floor(x), x1 = Math.min(W - 1, x0 + 1);
-  const y0 = Math.floor(y), y1 = Math.min(H - 1, y0 + 1);
-  const fx = x - x0, fy = y - y0;
-  const v00 = elevations[y0 * W + x0];
-  const v10 = elevations[y0 * W + x1];
-  const v01 = elevations[y1 * W + x0];
-  const v11 = elevations[y1 * W + x1];
-  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
-}
 
 /**
  * Build a draped LineSegments geometry for multiple contour elevations.

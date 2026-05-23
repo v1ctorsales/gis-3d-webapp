@@ -61,6 +61,30 @@ export function makeProject(bbox, scale) {
 }
 
 /**
+ * Bilinear interpolation in heightmap pixel coordinates. Out-of-range inputs
+ * are clamped to the edge so callers don't have to special-case boundaries.
+ *
+ * @param {{elevations: ArrayLike<number>, width: number, height: number}} hm
+ * @param {number} x  pixel-space x (column, 0..width-1)
+ * @param {number} y  pixel-space y (row,    0..height-1)
+ */
+export function bilinear(hm, x, y) {
+  const { elevations, width: W, height: H } = hm;
+  const cx = Math.max(0, Math.min(W - 1, x));
+  const cy = Math.max(0, Math.min(H - 1, y));
+  const x0 = Math.min(Math.floor(cx), W - 2);
+  const x1 = x0 + 1;
+  const y0 = Math.min(Math.floor(cy), H - 2);
+  const y1 = y0 + 1;
+  const fx = cx - x0, fy = cy - y0;
+  const v00 = elevations[y0 * W + x0];
+  const v10 = elevations[y0 * W + x1];
+  const v01 = elevations[y1 * W + x0];
+  const v11 = elevations[y1 * W + x1];
+  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+}
+
+/**
  * Build a sampler that returns the elevation (in meters) at any (lon, lat)
  * inside the bbox, using nearest-neighbor lookup in the heightmap.
  */

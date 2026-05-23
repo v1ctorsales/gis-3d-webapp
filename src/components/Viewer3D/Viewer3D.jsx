@@ -40,10 +40,16 @@ const OSM_ATTRIBUTION = "© OpenStreetMap contributors";
 export default function Viewer3D({ bbox, onBack }) {
   // --- Terrain data (loaded once per bbox) ---
   const [terrain, setTerrain] = useState({ status: "loading" });
+  const [trackedBbox, setTrackedBbox] = useState(bbox);
+  // Reset to "loading" the moment bbox changes (React 19's setState-during-render
+  // pattern — keeps the lint rule happy and avoids a flash of stale data).
+  if (trackedBbox !== bbox) {
+    setTrackedBbox(bbox);
+    setTerrain({ status: "loading" });
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setTerrain({ status: "loading" });
     Promise.all([fetchElevation(bbox), fetchSatelliteTexture(bbox)])
       .then(([heightmap, satellite]) => {
         if (cancelled) return;
@@ -65,7 +71,6 @@ export default function Viewer3D({ bbox, onBack }) {
   const [showWater, setShowWater] = useState(false);
   const [waterOffset, setWaterOffset] = useState(0); // meters
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
-  const [hdWater, setHdWater] = useState(false);
   const [showRoads, setShowRoads] = useState(false);
   const [roads, setRoads] = useState({ status: "idle" });
   const [showContours, setShowContours] = useState(false);
@@ -223,12 +228,15 @@ export default function Viewer3D({ bbox, onBack }) {
   }, [showRoads, bbox]);
 
   // --- Flood level initialization ---
-  useEffect(() => {
-    if (terrain.status === "ready") {
-      const mid = (terrain.heightmap.minElevation + terrain.heightmap.maxElevation) / 2;
-      setFloodLevel(Math.round(mid));
-    }
-  }, [terrain]);
+  // Pick a sensible default flood level (midpoint of the terrain's elevation
+  // range) the first time each heightmap loads. Tracking the heightmap object
+  // means we re-initialize on bbox change but not on every render.
+  const [floodInitForHM, setFloodInitForHM] = useState(null);
+  if (terrain.status === "ready" && floodInitForHM !== terrain.heightmap) {
+    setFloodInitForHM(terrain.heightmap);
+    const mid = (terrain.heightmap.minElevation + terrain.heightmap.maxElevation) / 2;
+    setFloodLevel(Math.round(mid));
+  }
 
   const flood = useMemo(() => {
     if (!showFlood || terrain.status !== "ready" || !pixelSizeM) return null;
@@ -302,7 +310,7 @@ export default function Viewer3D({ bbox, onBack }) {
   };
 
   const profileSamples = useMemo(() => {
-    if (profilePoints.length < 2 || terrain.status !== "ready" || !buildResult) return null;
+    if (profilePoints.length < 2 || terrain.status !== "ready" || !buildResult || !pixelSizeM) return null;
     const { sceneWidth, sceneDepth } = buildResult.bounds;
     const { width: W, height: H } = terrain.heightmap;
     const startX = -sceneWidth / 2;
@@ -317,10 +325,9 @@ export default function Viewer3D({ bbox, onBack }) {
       toPx(profilePoints[1]),
       128,
     );
-    const pxM = buildResult.scale.widthM / W;
-    const totalDistanceM = samples[samples.length - 1].distancePx * pxM;
+    const totalDistanceM = samples[samples.length - 1].distancePx * pixelSizeM;
     return { samples, totalDistanceM };
-  }, [profilePoints, terrain, buildResult]);
+  }, [profilePoints, terrain, buildResult, pixelSizeM]);
 
   return (
     <div className={styles.viewer}>
@@ -386,7 +393,6 @@ export default function Viewer3D({ bbox, onBack }) {
               inlandParts={waterInlandParts}
               seaPlane={seaPlane}
               yOffsetUnits={waterOffset * buildResult.scale.verticalScale}
-              hd={hdWater}
             />
           )}
 
@@ -549,15 +555,6 @@ export default function Viewer3D({ bbox, onBack }) {
                     onChange={(e) => setWaterOffset(parseFloat(e.target.value))}
                   />
                 </label>
-                {/*<label className={styles.check}>
-                  <input
-                    type="checkbox"
-                    checked={hdWater}
-                    onChange={(e) => setHdWater(e.target.checked)}
-                  />
-                  HD water
-                  <span className={styles.muted}> (animated, reflective)</span>
-                </label>*/}
               </div>
             )}
           </fieldset>

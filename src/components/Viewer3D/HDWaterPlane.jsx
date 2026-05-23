@@ -36,6 +36,10 @@ export default function HDWaterPlane({
     return new Float32Array(geometry.attributes.position.array);
   }, [geometry, animateVertices]);
 
+  // Three.js textures and BufferGeometry attributes are designed to be mutated
+  // in-place — that's how UV scrolling and vertex animation work in R3F.
+  // The react-hooks/immutability rule is over-strict here.
+  /* eslint-disable react-hooks/immutability */
   useFrame((state) => {
     const t = state.clock.elapsedTime * ANIMATION_SPEED;
 
@@ -62,6 +66,7 @@ export default function HDWaterPlane({
       meshRef.current.geometry.computeVertexNormals();
     }
   });
+  /* eslint-enable react-hooks/immutability */
 
   if (!geometry || !localNormalMap) return null;
 
