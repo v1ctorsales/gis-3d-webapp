@@ -10,6 +10,11 @@ import {
 import { fetchBuildings, fetchWater, fetchRoads } from "../../services/osm";
 import { buildTerrainGeometry } from "./buildTerrainGeometry";
 import { buildHypsometricCanvas } from "./hypsometric";
+import {
+  buildSlopeCanvas,
+  buildAspectCanvas,
+  buildHillshadeCanvas,
+} from "./surfaceTextures";
 import { buildBuildingsGeometry } from "./buildBuildingsGeometry";
 import { buildInlandWaterGeometry } from "./buildWaterGeometry";
 import { buildRoadsGeometry } from "./buildRoadsGeometry";
@@ -70,12 +75,37 @@ export default function Viewer3D({ bbox, onBack }) {
     return buildHypsometricCanvas(terrain.heightmap);
   }, [terrain]);
 
-  const activeTexture =
-    surface === "imagery"
-      ? terrain.status === "ready"
-        ? terrain.satellite
-        : null
-      : hypsometricCanvas;
+  const pixelSizeM = useMemo(() => {
+    if (terrain.status !== "ready" || !buildResult) return null;
+    return buildResult.scale.widthM / terrain.heightmap.width;
+  }, [terrain, buildResult]);
+
+  const slopeCanvas = useMemo(() => {
+    if (terrain.status !== "ready" || !pixelSizeM) return null;
+    return buildSlopeCanvas(terrain.heightmap, pixelSizeM);
+  }, [terrain, pixelSizeM]);
+
+  const aspectCanvas = useMemo(() => {
+    if (terrain.status !== "ready" || !pixelSizeM) return null;
+    return buildAspectCanvas(terrain.heightmap, pixelSizeM);
+  }, [terrain, pixelSizeM]);
+
+  const hillshadeCanvas = useMemo(() => {
+    if (terrain.status !== "ready" || !pixelSizeM) return null;
+    return buildHillshadeCanvas(terrain.heightmap, pixelSizeM);
+  }, [terrain, pixelSizeM]);
+
+  const activeTexture = (() => {
+    if (terrain.status !== "ready") return null;
+    switch (surface) {
+      case "imagery": return terrain.satellite;
+      case "hypsometric": return hypsometricCanvas;
+      case "slope": return slopeCanvas;
+      case "aspect": return aspectCanvas;
+      case "hillshade": return hillshadeCanvas;
+      default: return terrain.satellite;
+    }
+  })();
 
   // Projector + sampler tied to current scale/heightmap
   const project = useMemo(
@@ -323,6 +353,33 @@ export default function Viewer3D({ bbox, onBack }) {
                 onChange={() => setSurface("hypsometric")}
               />
               Hypsometric tint
+            </label>
+            <label className={styles.radio}>
+              <input
+                type="radio"
+                name="surface"
+                checked={surface === "hillshade"}
+                onChange={() => setSurface("hillshade")}
+              />
+              Hillshade
+            </label>
+            <label className={styles.radio}>
+              <input
+                type="radio"
+                name="surface"
+                checked={surface === "slope"}
+                onChange={() => setSurface("slope")}
+              />
+              Slope
+            </label>
+            <label className={styles.radio}>
+              <input
+                type="radio"
+                name="surface"
+                checked={surface === "aspect"}
+                onChange={() => setSurface("aspect")}
+              />
+              Aspect
             </label>
           </fieldset>
 
