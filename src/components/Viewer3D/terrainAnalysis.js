@@ -75,3 +75,37 @@ export function computeAspect(hm, pixelSizeM) {
   }
   return out;
 }
+
+/**
+ * Hillshade in [0, 1]. ESRI formula.
+ * @param {{elevations, width, height}} hm
+ * @param {number} pixelSizeM
+ * @param {{azimuthDeg?: number, altitudeDeg?: number}} sun
+ */
+export function computeHillshade(hm, pixelSizeM, sun = {}) {
+  const azimuthDeg = sun.azimuthDeg ?? 315;
+  const altitudeDeg = sun.altitudeDeg ?? 45;
+  const slope = computeSlope(hm, pixelSizeM);
+  const aspect = computeAspect(hm, pixelSizeM);
+  const zenith = ((90 - altitudeDeg) * Math.PI) / 180;
+  const az = (azimuthDeg * Math.PI) / 180;
+  const cosZen = Math.cos(zenith);
+  const sinZen = Math.sin(zenith);
+  const out = new Float32Array(slope.length);
+  for (let i = 0; i < slope.length; i++) {
+    const s = slope[i];
+    const a = aspect[i];
+    const cosSlope = Math.cos(s);
+    const sinSlope = Math.sin(s);
+    let v;
+    if (Number.isNaN(a)) {
+      v = cosZen * cosSlope;
+    } else {
+      v = cosZen * cosSlope + sinZen * sinSlope * Math.cos(az - a);
+    }
+    if (v < 0) v = 0;
+    if (v > 1) v = 1;
+    out[i] = v;
+  }
+  return out;
+}

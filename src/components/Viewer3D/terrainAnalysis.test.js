@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSlope, computeAspect } from "./terrainAnalysis";
+import { computeSlope, computeAspect, computeHillshade } from "./terrainAnalysis";
 
 function flat(width, height, value = 100) {
   const elevations = new Float32Array(width * height);
@@ -53,5 +53,25 @@ describe("computeAspect", () => {
   it("output length equals width * height", () => {
     const aspect = computeAspect(flat(7, 5), 10);
     expect(aspect.length).toBe(35);
+  });
+});
+
+describe("computeHillshade", () => {
+  it("returns sin(altitude) on flat terrain (slope=0)", () => {
+    const hs = computeHillshade(flat(5, 5), 10, { azimuthDeg: 315, altitudeDeg: 45 });
+    expect(hs[2 * 5 + 2]).toBeCloseTo(Math.sin((45 * Math.PI) / 180), 3);
+  });
+
+  it("values are clamped to [0, 1]", () => {
+    const hs = computeHillshade(ramp(5, 5, 1), 1, { azimuthDeg: 315, altitudeDeg: 45 });
+    for (const v of hs) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("output length equals width * height", () => {
+    const hs = computeHillshade(flat(7, 5), 10);
+    expect(hs.length).toBe(35);
   });
 });
