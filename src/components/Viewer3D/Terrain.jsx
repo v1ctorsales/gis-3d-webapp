@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
-export default function Terrain({ buildResult, textureCanvas }) {
+export default function Terrain({ buildResult, textureCanvas, onTerrainClick }) {
   const textureMap = useMemo(() => {
     if (!textureCanvas) return null;
     const tex = new THREE.CanvasTexture(textureCanvas);
@@ -15,7 +15,17 @@ export default function Terrain({ buildResult, textureCanvas }) {
   useEffect(() => () => textureMap?.dispose(), [textureMap]);
 
   return (
-    <mesh geometry={buildResult.geometry} castShadow receiveShadow>
+    <mesh
+      geometry={buildResult.geometry}
+      castShadow
+      receiveShadow
+      onClick={(e) => {
+        if (onTerrainClick) {
+          e.stopPropagation();
+          onTerrainClick(e.point);
+        }
+      }}
+    >
       <meshStandardMaterial
         attach="material-0"
         map={textureMap}
