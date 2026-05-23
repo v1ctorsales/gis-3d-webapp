@@ -1,0 +1,40 @@
+import { describe, it, expect } from "vitest";
+import { computeSlope } from "./terrainAnalysis";
+
+function flat(width, height, value = 100) {
+  const elevations = new Float32Array(width * height);
+  elevations.fill(value);
+  return { elevations, width, height };
+}
+
+function ramp(width, height, perPixelGain) {
+  const elevations = new Float32Array(width * height);
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      elevations[r * width + c] = c * perPixelGain;
+    }
+  }
+  return { elevations, width, height };
+}
+
+describe("computeSlope", () => {
+  it("returns all zeros for a flat heightmap", () => {
+    const slope = computeSlope(flat(5, 5, 100), 10);
+    for (const v of slope) expect(v).toBeCloseTo(0, 6);
+  });
+
+  it("returns 45° (≈ π/4) for a ramp of 1 m per 1 m", () => {
+    const slope = computeSlope(ramp(5, 5, 1), 1);
+    expect(slope[2 * 5 + 2]).toBeCloseTo(Math.PI / 4, 3);
+  });
+
+  it("returns atan(0.5) for a 1:2 slope (rise 1 per run 2)", () => {
+    const slope = computeSlope(ramp(5, 5, 1), 2);
+    expect(slope[2 * 5 + 2]).toBeCloseTo(Math.atan(1 / 2), 3);
+  });
+
+  it("output length equals width * height", () => {
+    const slope = computeSlope(flat(7, 5), 10);
+    expect(slope.length).toBe(35);
+  });
+});
