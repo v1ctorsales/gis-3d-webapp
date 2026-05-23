@@ -25,6 +25,9 @@ import Roads from "./Roads";
 import Contours from "./Contours";
 import FloodPlane from "./FloodPlane";
 import { floodStats } from "./floodAnalysis";
+import ProfileLine from "./ProfileLine";
+import ProfilePanel from "../ProfilePanel/ProfilePanel";
+import { sampleProfile } from "./profileSampling";
 import styles from "./Viewer3D.module.css";
 import {
   makeProject,
@@ -69,6 +72,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [contourSpacing, setContourSpacing] = useState(50); // meters
   const [showFlood, setShowFlood] = useState(false);
   const [floodLevel, setFloodLevel] = useState(0); // meters
+  const [profileTool, setProfileTool] = useState(false);
+  const [profilePoints, setProfilePoints] = useState([]); // [{x,y,z}, ...] in scene coords
   const roadsCacheRef = useRef({});
 
   // --- Derived terrain artifacts ---
@@ -288,6 +293,35 @@ export default function Viewer3D({ bbox, onBack }) {
     (showWater && water.status === "ready") ||
     (showRoads && roads.status === "ready");
 
+  const handleTerrainClick = (point) => {
+    if (!profileTool) return;
+    setProfilePoints((prev) => {
+      if (prev.length >= 2) return [{ x: point.x, y: point.y, z: point.z }];
+      return [...prev, { x: point.x, y: point.y, z: point.z }];
+    });
+  };
+
+  const profileSamples = useMemo(() => {
+    if (profilePoints.length < 2 || terrain.status !== "ready" || !buildResult) return null;
+    const { sceneWidth, sceneDepth } = buildResult.bounds;
+    const { width: W, height: H } = terrain.heightmap;
+    const startX = -sceneWidth / 2;
+    const startZ = -sceneDepth / 2;
+    const toPx = (p) => ({
+      x: ((p.x - startX) / sceneWidth) * (W - 1),
+      y: ((p.z - startZ) / sceneDepth) * (H - 1),
+    });
+    const samples = sampleProfile(
+      terrain.heightmap,
+      toPx(profilePoints[0]),
+      toPx(profilePoints[1]),
+      128,
+    );
+    const pxM = buildResult.scale.widthM / W;
+    const totalDistanceM = samples[samples.length - 1].distancePx * pxM;
+    return { samples, totalDistanceM };
+  }, [profilePoints, terrain, buildResult]);
+
   return (
     <div className={styles.viewer}>
       {terrain.status === "loading" && (
@@ -322,7 +356,11 @@ export default function Viewer3D({ bbox, onBack }) {
             shadow-camera-far={1500}
           />
 
-          <Terrain buildResult={buildResult} textureCanvas={activeTexture} />
+          <Terrain
+            buildResult={buildResult}
+            textureCanvas={activeTexture}
+            onTerrainClick={profileTool ? handleTerrainClick : undefined}
+          />
           {showContours && (
             <Contours
               heightmap={terrain.heightmap}
@@ -337,6 +375,9 @@ export default function Viewer3D({ bbox, onBack }) {
               scale={buildResult.scale}
               level={floodLevel}
             />
+          )}
+          {profilePoints.length === 2 && (
+            <ProfileLine p0={profilePoints[0]} p1={profilePoints[1]} />
           )}
           {buildingsGeometry && <Buildings geometry={buildingsGeometry} />}
           {roadsGeometry && <Roads geometry={roadsGeometry} />}
@@ -593,6 +634,28 @@ export default function Viewer3D({ bbox, onBack }) {
             )}
           </fieldset>
 
+          <fieldset className={styles.group}>
+            <legend>Tools</legend>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={profileTool}
+                onChange={(e) => {
+                  setProfileTool(e.target.checked);
+                  if (!e.target.checked) setProfilePoints([]);
+                }}
+              />
+              Elevation profile
+            </label>
+            {profileTool && (
+              <div className={styles.muted}>
+                {profilePoints.length === 0 && "Click terrain to set start point"}
+                {profilePoints.length === 1 && "Click again to set end point"}
+                {profilePoints.length === 2 && "Click again to reset"}
+              </div>
+            )}
+          </fieldset>
+
           <div className={styles.stats}>
             Area:{" "}
             {(
@@ -603,6 +666,14 @@ export default function Viewer3D({ bbox, onBack }) {
             {Math.round(terrain.heightmap.maxElevation)} m
           </div>
         </div>
+      )}
+
+      {profileSamples && (
+        <ProfilePanel
+          samples={profileSamples.samples}
+          totalDistanceM={profileSamples.totalDistanceM}
+          onClose={() => setProfilePoints([])}
+        />
       )}
 
       <div className={styles.attribution}>
