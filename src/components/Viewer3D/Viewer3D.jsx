@@ -22,6 +22,7 @@ import Terrain from "./Terrain";
 import Buildings from "./Buildings";
 import Water from "./Water";
 import Roads from "./Roads";
+import Contours from "./Contours";
 import styles from "./Viewer3D.module.css";
 import {
   makeProject,
@@ -62,6 +63,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [hdWater, setHdWater] = useState(false);
   const [showRoads, setShowRoads] = useState(false);
   const [roads, setRoads] = useState({ status: "idle" });
+  const [showContours, setShowContours] = useState(false);
+  const [contourSpacing, setContourSpacing] = useState(50); // meters
   const roadsCacheRef = useRef({});
 
   // --- Derived terrain artifacts ---
@@ -303,6 +306,14 @@ export default function Viewer3D({ bbox, onBack }) {
           />
 
           <Terrain buildResult={buildResult} textureCanvas={activeTexture} />
+          {showContours && (
+            <Contours
+              heightmap={terrain.heightmap}
+              bounds={buildResult.bounds}
+              scale={buildResult.scale}
+              spacing={contourSpacing}
+            />
+          )}
           {buildingsGeometry && <Buildings geometry={buildingsGeometry} />}
           {roadsGeometry && <Roads geometry={roadsGeometry} />}
           {(waterInlandParts || seaPlane) && (
@@ -500,6 +511,28 @@ export default function Viewer3D({ bbox, onBack }) {
                 onChange={(e) => setExaggeration(parseFloat(e.target.value))}
               />
             </label>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={showContours}
+                onChange={(e) => setShowContours(e.target.checked)}
+              />
+              Contour lines
+            </label>
+            {showContours && (
+              <label className={styles.slider}>
+                <span>Contour spacing</span>
+                <span className={styles.value}>{contourSpacing} m</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={200}
+                  step={5}
+                  value={contourSpacing}
+                  onChange={(e) => setContourSpacing(parseInt(e.target.value, 10))}
+                />
+              </label>
+            )}
           </fieldset>
 
           <div className={styles.stats}>
