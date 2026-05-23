@@ -23,6 +23,8 @@ import Buildings from "./Buildings";
 import Water from "./Water";
 import Roads from "./Roads";
 import Contours from "./Contours";
+import FloodPlane from "./FloodPlane";
+import { floodStats } from "./floodAnalysis";
 import styles from "./Viewer3D.module.css";
 import {
   makeProject,
@@ -65,6 +67,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [roads, setRoads] = useState({ status: "idle" });
   const [showContours, setShowContours] = useState(false);
   const [contourSpacing, setContourSpacing] = useState(50); // meters
+  const [showFlood, setShowFlood] = useState(false);
+  const [floodLevel, setFloodLevel] = useState(0); // meters
   const roadsCacheRef = useRef({});
 
   // --- Derived terrain artifacts ---
@@ -213,6 +217,19 @@ export default function Viewer3D({ bbox, onBack }) {
     };
   }, [showRoads, bbox]);
 
+  // --- Flood level initialization ---
+  useEffect(() => {
+    if (terrain.status === "ready") {
+      const mid = (terrain.heightmap.minElevation + terrain.heightmap.maxElevation) / 2;
+      setFloodLevel(Math.round(mid));
+    }
+  }, [terrain]);
+
+  const flood = useMemo(() => {
+    if (!showFlood || terrain.status !== "ready" || !pixelSizeM) return null;
+    return floodStats(terrain.heightmap, floodLevel, pixelSizeM * pixelSizeM);
+  }, [showFlood, terrain, floodLevel, pixelSizeM]);
+
   // --- Overlay geometries ---
   const buildingsGeometry = useMemo(() => {
     if (!showBuildings || buildings.status !== "ready" || !project) return null;
@@ -312,6 +329,13 @@ export default function Viewer3D({ bbox, onBack }) {
               bounds={buildResult.bounds}
               scale={buildResult.scale}
               spacing={contourSpacing}
+            />
+          )}
+          {showFlood && (
+            <FloodPlane
+              bounds={buildResult.bounds}
+              scale={buildResult.scale}
+              level={floodLevel}
             />
           )}
           {buildingsGeometry && <Buildings geometry={buildingsGeometry} />}
@@ -532,6 +556,40 @@ export default function Viewer3D({ bbox, onBack }) {
                   onChange={(e) => setContourSpacing(parseInt(e.target.value, 10))}
                 />
               </label>
+            )}
+          </fieldset>
+
+          <fieldset className={styles.group}>
+            <legend>Flood (static)</legend>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={showFlood}
+                onChange={(e) => setShowFlood(e.target.checked)}
+              />
+              Show flood plane
+            </label>
+            {showFlood && (
+              <>
+                <label className={styles.slider}>
+                  <span>Water level</span>
+                  <span className={styles.value}>{floodLevel} m</span>
+                  <input
+                    type="range"
+                    min={Math.floor(terrain.heightmap.minElevation)}
+                    max={Math.ceil(terrain.heightmap.maxElevation)}
+                    step={1}
+                    value={floodLevel}
+                    onChange={(e) => setFloodLevel(parseInt(e.target.value, 10))}
+                  />
+                </label>
+                {flood && (
+                  <div className={styles.stats}>
+                    {(flood.floodedFraction * 100).toFixed(1)}% inundated ·{" "}
+                    {(flood.floodedAreaM2 / 1_000_000).toFixed(2)} km²
+                  </div>
+                )}
+              </>
             )}
           </fieldset>
 
