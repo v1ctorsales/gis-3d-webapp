@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
@@ -20,7 +21,10 @@ import {
 } from "./surfaceTextures";
 import { suggestHillshadeZFactor } from "./terrainAnalysis";
 import { buildBuildingsGeometry } from "./buildBuildingsGeometry";
-import { buildInlandWaterGeometry } from "./buildWaterGeometry";
+import {
+  buildInlandWaterGeometry,
+  buildWaterwayRibbonGeometry,
+} from "./buildWaterGeometry";
 import { buildRoadsGeometry } from "./buildRoadsGeometry";
 import Terrain from "./Terrain";
 import Buildings from "./Buildings";
@@ -87,6 +91,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [floodLevel, setFloodLevel] = useState(0); // meters
   const [profileTool, setProfileTool] = useState(false);
   const [profilePoints, setProfilePoints] = useState([]); // [{x,y,z}, ...] in scene coords
+  const [previewPoint, setPreviewPoint] = useState(null); // live cursor while picking second point
+  const [hoveredProfileIndex, setHoveredProfileIndex] = useState(null);
   const [hillshadeZ, setHillshadeZ] = useState(1);
   const [hillshadeZAuto, setHillshadeZAuto] = useState(null); // last computed auto value
   const [hypsoBandM, setHypsoBandM] = useState(50);
@@ -299,10 +305,23 @@ export default function Viewer3D({ bbox, onBack }) {
 
   const waterInlandParts = useMemo(() => {
     if (!showWater || water.status !== "ready" || !project) return null;
-    return buildInlandWaterGeometry(water.data, {
+    return buildInlandWaterGeometry(water.data.polygons, {
       project,
       sampleElevation,
       verticalScale: buildResult.scale.verticalScale,
+      bbox,
+    });
+  }, [showWater, water, project, sampleElevation, buildResult, bbox]);
+
+  const waterwayGeometry = useMemo(() => {
+    if (!showWater || water.status !== "ready" || !project) return null;
+    const lines = water.data.lines;
+    if (!lines || lines.length === 0) return null;
+    return buildWaterwayRibbonGeometry(lines, {
+      project,
+      sampleElevation,
+      verticalScale: buildResult.scale.verticalScale,
+      metersToUnits: buildResult.scale.metersToUnits,
       bbox,
     });
   }, [showWater, water, project, sampleElevation, buildResult, bbox]);
@@ -351,27 +370,107 @@ export default function Viewer3D({ bbox, onBack }) {
       if (prev.length >= 2) return [{ x: point.x, y: point.y, z: point.z }];
       return [...prev, { x: point.x, y: point.y, z: point.z }];
     });
+    setPreviewPoint(null);
+    setHoveredProfileIndex(null);
   };
 
-  const profileSamples = useMemo(() => {
-    if (profilePoints.length < 2 || terrain.status !== "ready" || !buildResult || !pixelSizeM) return null;
+  const handleTerrainPointerMove = (point) => {
+    if (!profileTool) return;
+    if (profilePoints.length !== 1) return;
+    setPreviewPoint({ x: point.x, y: point.y, z: point.z });
+  };
+
+  // Map a scene-space (x, z) point to heightmap pixel coords.
+  const sceneToPx = useMemo(() => {
+    if (terrain.status !== "ready" || !buildResult) return null;
     const { sceneWidth, sceneDepth } = buildResult.bounds;
     const { width: W, height: H } = terrain.heightmap;
     const startX = -sceneWidth / 2;
     const startZ = -sceneDepth / 2;
-    const toPx = (p) => ({
+    return (p) => ({
       x: ((p.x - startX) / sceneWidth) * (W - 1),
       y: ((p.z - startZ) / sceneDepth) * (H - 1),
     });
+  }, [terrain, buildResult]);
+
+  // Turn an array of {distancePx, x, y, elevation} samples into the draped
+  // scene-space Vector3 points used by ProfileLine.
+  const samplesToScenePoints = useMemo(() => {
+    if (!buildResult || terrain.status !== "ready") return null;
+    const { sceneWidth, sceneDepth } = buildResult.bounds;
+    const { width: W, height: H } = terrain.heightmap;
+    const { verticalScale } = buildResult.scale;
+    const startX = -sceneWidth / 2;
+    const startZ = -sceneDepth / 2;
+    const Y_LIFT_UNITS = 0.4;
+    return (samples) =>
+      samples.map(
+        (s) =>
+          new THREE.Vector3(
+            startX + (s.x / (W - 1)) * sceneWidth,
+            s.elevation * verticalScale + Y_LIFT_UNITS,
+            startZ + (s.y / (H - 1)) * sceneDepth,
+          ),
+      );
+  }, [terrain, buildResult]);
+
+  const profileSamples = useMemo(() => {
+    if (
+      profilePoints.length < 2 ||
+      terrain.status !== "ready" ||
+      !buildResult ||
+      !pixelSizeM ||
+      !sceneToPx
+    )
+      return null;
     const samples = sampleProfile(
       terrain.heightmap,
-      toPx(profilePoints[0]),
-      toPx(profilePoints[1]),
+      sceneToPx(profilePoints[0]),
+      sceneToPx(profilePoints[1]),
       128,
     );
     const totalDistanceM = samples[samples.length - 1].distancePx * pixelSizeM;
     return { samples, totalDistanceM };
-  }, [profilePoints, terrain, buildResult, pixelSizeM]);
+  }, [profilePoints, terrain, buildResult, pixelSizeM, sceneToPx]);
+
+  // Draped scene points for the committed line.
+  const committedProfileLinePoints = useMemo(() => {
+    if (!profileSamples || !samplesToScenePoints) return null;
+    return samplesToScenePoints(profileSamples.samples);
+  }, [profileSamples, samplesToScenePoints]);
+
+  // Draped scene points + live distance for the rubber-band preview.
+  const previewProfile = useMemo(() => {
+    if (
+      !profileTool ||
+      profilePoints.length !== 1 ||
+      !previewPoint ||
+      terrain.status !== "ready" ||
+      !buildResult ||
+      !pixelSizeM ||
+      !sceneToPx ||
+      !samplesToScenePoints
+    )
+      return null;
+    const samples = sampleProfile(
+      terrain.heightmap,
+      sceneToPx(profilePoints[0]),
+      sceneToPx(previewPoint),
+      32,
+    );
+    const points = samplesToScenePoints(samples);
+    const distanceM = samples[samples.length - 1].distancePx * pixelSizeM;
+    return { points, distanceM };
+  }, [
+    profileTool,
+    profilePoints,
+    previewPoint,
+    terrain,
+    buildResult,
+    pixelSizeM,
+    sceneToPx,
+    samplesToScenePoints,
+  ]);
 
   return (
     <div className={styles.viewer}>
@@ -411,6 +510,11 @@ export default function Viewer3D({ bbox, onBack }) {
             buildResult={buildResult}
             textureCanvas={activeTexture}
             onTerrainClick={profileTool ? handleTerrainClick : undefined}
+            onTerrainPointerMove={
+              profileTool && profilePoints.length === 1
+                ? handleTerrainPointerMove
+                : undefined
+            }
           />
           {showContours && (
             <Contours
@@ -430,14 +534,34 @@ export default function Viewer3D({ bbox, onBack }) {
               level={floodLevel}
             />
           )}
-          {profilePoints.length === 2 && (
-            <ProfileLine p0={profilePoints[0]} p1={profilePoints[1]} />
+          {committedProfileLinePoints && (
+            <ProfileLine points={committedProfileLinePoints} />
           )}
+          {previewProfile && (
+            <ProfileLine
+              points={previewProfile.points}
+              dashed
+              opacity={0.75}
+            />
+          )}
+          {committedProfileLinePoints &&
+            hoveredProfileIndex != null &&
+            hoveredProfileIndex >= 0 &&
+            hoveredProfileIndex < committedProfileLinePoints.length && (
+              <mesh
+                position={committedProfileLinePoints[hoveredProfileIndex]}
+                renderOrder={6}
+              >
+                <sphereGeometry args={[1.6, 16, 16]} />
+                <meshBasicMaterial color="#ffd84d" depthTest={false} />
+              </mesh>
+            )}
           {buildingsGeometry && <Buildings geometry={buildingsGeometry} />}
           {roadsGeometry && <Roads geometry={roadsGeometry} />}
-          {(waterInlandParts || seaPlane) && (
+          {(waterInlandParts || waterwayGeometry || seaPlane) && (
             <Water
               inlandParts={waterInlandParts}
+              waterwayGeometry={waterwayGeometry}
               seaPlane={seaPlane}
               yOffsetUnits={waterOffset * buildResult.scale.verticalScale}
             />
@@ -582,6 +706,17 @@ export default function Viewer3D({ bbox, onBack }) {
                 {water.status === "error" && (
                   <span className={styles.error}> (failed)</span>
                 )}
+                {water.status === "ready" &&
+                  water.data.tier &&
+                  water.data.tier !== "full" && (
+                    <span
+                      className={styles.muted}
+                      title={water.data.tierDescription}
+                    >
+                      {" "}
+                      (reduced: {water.data.tier})
+                    </span>
+                  )}
               </label>
               <button
                 type="button"
@@ -786,16 +921,25 @@ export default function Viewer3D({ bbox, onBack }) {
                 checked={profileTool}
                 onChange={(e) => {
                   setProfileTool(e.target.checked);
-                  if (!e.target.checked) setProfilePoints([]);
+                  if (!e.target.checked) {
+                    setProfilePoints([]);
+                    setPreviewPoint(null);
+                    setHoveredProfileIndex(null);
+                  }
                 }}
               />
-              Elevation profile
+              Measure tool
             </label>
             {profileTool && (
               <div className={styles.muted}>
                 {profilePoints.length === 0 && "Click terrain to set start point"}
                 {profilePoints.length === 1 && "Click again to set end point"}
                 {profilePoints.length === 2 && "Click again to reset"}
+              </div>
+            )}
+            {profileTool && previewProfile && (
+              <div className={styles.stats}>
+                Distance: {(previewProfile.distanceM / 1000).toFixed(2)} km
               </div>
             )}
           </fieldset>
@@ -816,7 +960,12 @@ export default function Viewer3D({ bbox, onBack }) {
         <ProfilePanel
           samples={profileSamples.samples}
           totalDistanceM={profileSamples.totalDistanceM}
-          onClose={() => setProfilePoints([])}
+          onClose={() => {
+            setProfilePoints([]);
+            setHoveredProfileIndex(null);
+          }}
+          onHoverIndex={setHoveredProfileIndex}
+          hoveredIndex={hoveredProfileIndex}
         />
       )}
 

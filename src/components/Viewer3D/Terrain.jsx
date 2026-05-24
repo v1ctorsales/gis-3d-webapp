@@ -1,7 +1,12 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
-export default function Terrain({ buildResult, textureCanvas, onTerrainClick }) {
+export default function Terrain({
+  buildResult,
+  textureCanvas,
+  onTerrainClick,
+  onTerrainPointerMove,
+}) {
   const textureMap = useMemo(() => {
     if (!textureCanvas) return null;
     const tex = new THREE.CanvasTexture(textureCanvas);
@@ -25,6 +30,14 @@ export default function Terrain({ buildResult, textureCanvas, onTerrainClick }) 
           onTerrainClick(e.point);
         }
       }}
+      onPointerMove={
+        onTerrainPointerMove
+          ? (e) => {
+              e.stopPropagation();
+              onTerrainPointerMove(e.point);
+            }
+          : undefined
+      }
     >
       <meshStandardMaterial
         attach="material-0"

@@ -15,7 +15,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
+}
+.title {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.7rem;
@@ -29,7 +31,30 @@
   font-size: 1.1rem;
   line-height: 1;
 }
+.distance {
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  opacity: 1;
+  margin-bottom: 0.35rem;
+  color: #fff;
+}
+.distance strong {
+  font-weight: 600;
+  color: #fff;
+}
 .area { fill: rgba(80, 160, 240, 0.25); }
 .line { fill: none; stroke: #6cb6ff; stroke-width: 1.5; }
 .axis { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; }
 .tick { fill: rgba(255, 255, 255, 0.7); font-size: 10px; font-family: "Menlo", "Consolas", monospace; }
+.chart { cursor: crosshair; display: block; }
+.hoverLine { stroke: #ff7755; stroke-width: 1; stroke-dasharray: 3 2; pointer-events: none; }
+.hoverDot { fill: #ff7755; stroke: #fff; stroke-width: 1; pointer-events: none; }
+.hoverLabel {
+  fill: #fff;
+  font-size: 11px;
+  font-family: "Menlo", "Consolas", monospace;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.7);
+  stroke-width: 3;
+}

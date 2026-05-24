@@ -1,16 +1,40 @@
-# React + Vite
+# gis-3d-webapp
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Browser app for picking an area on a world map and exploring it as a 3D terrain scene with optional OSM overlays (buildings, water, roads), surface analytics (hillshade, slope, aspect, hypsometric tint, contours), and interactive tools (static-flood plane, elevation-profile cross-section).
 
-Currently, two official plugins are available:
+Built with React 19 + Vite, MapLibre GL + Terra Draw for selection, and Three.js via `@react-three/fiber` / `drei` for the 3D viewer.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Data sources
 
-## React Compiler
+- **Elevation** — AWS Terrain Tiles (Terrarium PNG), derived from SRTM / ASTER / NED / ALOS via Mapzen.
+- **Satellite imagery** — Esri World Imagery.
+- **Vector overlays** — OpenStreetMap via the Overpass API.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local development
 
-## Expanding the ESLint configuration
+Requires Node 20+ and npm.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```sh
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (typically `http://localhost:5173`). Draw a rectangle on the map, confirm the selection, and the 3D scene loads. Toggle overlays from the right-hand panel.
+
+In dev the Overpass client talks directly to `overpass.private.coffee`. To override, set `VITE_OVERPASS_URL` in a `.env.local` (either a full mirror URL or a leading-slash proxy path).
+
+## Other scripts
+
+```sh
+npm run build       # production bundle to dist/
+npm run preview     # serve dist/ locally
+npm run lint        # ESLint (flat config)
+npm test            # Vitest, single run
+npm run test:watch  # Vitest in watch mode
+```
+
+Tests live next to the modules they cover (`*.test.js`) and run under jsdom. Run a single file with `npx vitest run path/to/file.test.js`, or filter by name with `-t "substring"`.
+
+## Deployment notes
+
+`api/overpass.js` is a Vercel edge function that proxies Overpass requests across several mirrors and caches successful responses at the edge. In production the client posts to `/api/overpass` automatically; in other hosting environments either deploy that function or set `VITE_OVERPASS_URL` to a working mirror.

@@ -145,6 +145,102 @@ export function clipPolygonToBbox(polygon, bbox) {
   return result;
 }
 
+/**
+ * Liang-Barsky parametric clip of a single segment against an axis-aligned
+ * bbox. Returns {t0, t1} where each is in [0,1], representing the portion
+ * of segment p0→p1 that lies inside the bbox. Returns null when the
+ * segment is entirely outside.
+ */
+function liangBarsky(p0, p1, bbox) {
+  const dx = p1.lon - p0.lon;
+  const dy = p1.lat - p0.lat;
+  let t0 = 0;
+  let t1 = 1;
+
+  // For each of the four edges, accumulate the parametric window.
+  // p<0 ⇒ entering the half-plane; p>0 ⇒ leaving.
+  const tests = [
+    [-dx, p0.lon - bbox.west], // west edge
+    [dx, bbox.east - p0.lon], // east edge
+    [-dy, p0.lat - bbox.south], // south edge
+    [dy, bbox.north - p0.lat], // north edge
+  ];
+
+  for (const [p, q] of tests) {
+    if (p === 0) {
+      // Parallel to this edge; reject if starting outside.
+      if (q < 0) return null;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return null;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return null;
+      if (r < t1) t1 = r;
+    }
+  }
+  return { t0, t1 };
+}
+
+/**
+ * Clip a polyline (array of {lat, lon}) against an axis-aligned bbox.
+ * Returns an array of sub-linestrings (each itself an array of {lat, lon})
+ * — a polyline that enters/exits the bbox multiple times produces multiple
+ * sub-linestrings. Returns `[]` if the polyline is entirely outside.
+ */
+export function clipLineToBbox(coords, bbox) {
+  if (!coords || coords.length < 2) return [];
+
+  const sublines = [];
+  let current = null;
+
+  const lerp = (a, b, t) => ({
+    lon: a.lon + (b.lon - a.lon) * t,
+    lat: a.lat + (b.lat - a.lat) * t,
+  });
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p0 = coords[i];
+    const p1 = coords[i + 1];
+    const r = liangBarsky(p0, p1, bbox);
+
+    if (!r) {
+      // Segment entirely outside — close any open subline.
+      if (current && current.length >= 2) sublines.push(current);
+      current = null;
+      continue;
+    }
+
+    const start = r.t0 > 0 ? lerp(p0, p1, r.t0) : p0;
+    const end = r.t1 < 1 ? lerp(p0, p1, r.t1) : p1;
+
+    if (!current) {
+      current = [start, end];
+    } else if (r.t0 > 0) {
+      // Previous segment was inside and ended at its own p1 = this p0,
+      // but this segment doesn't begin until `start`. That means it left
+      // and re-entered the bbox at the joint vertex — close the previous
+      // subline and start a new one.
+      if (current.length >= 2) sublines.push(current);
+      current = [start, end];
+    } else {
+      // This segment continues directly from the previous one: just append.
+      current.push(end);
+    }
+
+    if (r.t1 < 1) {
+      // Segment exited the bbox before reaching p1 — close the subline.
+      if (current.length >= 2) sublines.push(current);
+      current = null;
+    }
+  }
+
+  if (current && current.length >= 2) sublines.push(current);
+  return sublines;
+}
+
 function intersectLon(a, b, lon) {
   const t = (lon - a.lon) / (b.lon - a.lon);
   return { lon, lat: a.lat + t * (b.lat - a.lat) };

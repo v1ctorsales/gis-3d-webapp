@@ -7,6 +7,7 @@ const SEA_SEGMENTS = 96;
 
 export default function Water({
   inlandParts,
+  waterwayGeometry,
   seaPlane,
   yOffsetUnits = 0,
   hd = false,
@@ -42,6 +43,10 @@ export default function Water({
     () => () => inlandParts?.forEach((p) => p.geometry?.dispose()),
     [inlandParts],
   );
+  useEffect(
+    () => () => waterwayGeometry?.dispose(),
+    [waterwayGeometry],
+  );
 
   return (
     <>
@@ -71,6 +76,20 @@ export default function Water({
             />
           </mesh>
         ))}
+
+      {waterwayGeometry && (
+        <mesh
+          geometry={waterwayGeometry}
+          position={[0, yOffsetUnits, 0]}
+          renderOrder={2}
+        >
+          <meshStandardMaterial
+            color="#2e6b9e"
+            roughness={0.25}
+            metalness={0.15}
+          />
+        </mesh>
+      )}
 
       {inlandParts?.map((part, i) =>
         hd && normalMap ? (

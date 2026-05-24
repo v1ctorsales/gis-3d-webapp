@@ -1,34 +1,51 @@
-import { useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { useMemo } from "react";
+import { Line } from "@react-three/drei";
 
-const Y_LIFT = 0.4;
+/**
+ * Draws a draped polyline through the supplied scene-space points and an
+ * endpoint sphere at each end (or just the start sphere when `dashed`,
+ * since the "moving" end is the cursor).
+ */
+export default function ProfileLine({
+  points,
+  color = "#ff7755",
+  dashed = false,
+  opacity = 1,
+}) {
+  const start = useMemo(() => (points?.length ? points[0] : null), [points]);
+  const end = useMemo(
+    () => (points?.length > 1 ? points[points.length - 1] : null),
+    [points],
+  );
 
-export default function ProfileLine({ p0, p1 }) {
-  const geometry = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    const positions = new Float32Array([
-      p0.x, p0.y + Y_LIFT, p0.z,
-      p1.x, p1.y + Y_LIFT, p1.z,
-    ]);
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    return g;
-  }, [p0, p1]);
-
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  if (!points || points.length < 2) return null;
 
   return (
     <>
-      <lineSegments geometry={geometry} renderOrder={5}>
-        <lineBasicMaterial color="#ff7755" linewidth={2} />
-      </lineSegments>
-      <mesh position={[p0.x, p0.y + Y_LIFT, p0.z]}>
-        <sphereGeometry args={[1.2, 12, 12]} />
-        <meshBasicMaterial color="#ff7755" />
-      </mesh>
-      <mesh position={[p1.x, p1.y + Y_LIFT, p1.z]}>
-        <sphereGeometry args={[1.2, 12, 12]} />
-        <meshBasicMaterial color="#ff7755" />
-      </mesh>
+      <Line
+        points={points}
+        color={color}
+        lineWidth={2.5}
+        transparent
+        opacity={opacity}
+        depthTest={false}
+        renderOrder={5}
+        dashed={dashed}
+        dashSize={dashed ? 3 : 0}
+        gapSize={dashed ? 2 : 0}
+      />
+      {start && (
+        <mesh position={[start.x, start.y, start.z]} renderOrder={6}>
+          <sphereGeometry args={[1.2, 12, 12]} />
+          <meshBasicMaterial color={color} depthTest={false} transparent opacity={opacity} />
+        </mesh>
+      )}
+      {!dashed && end && (
+        <mesh position={[end.x, end.y, end.z]} renderOrder={6}>
+          <sphereGeometry args={[1.2, 12, 12]} />
+          <meshBasicMaterial color={color} depthTest={false} transparent opacity={opacity} />
+        </mesh>
+      )}
     </>
   );
 }
