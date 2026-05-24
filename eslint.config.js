@@ -18,4 +18,13 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Network test suite and the Vercel edge function run in Node, not the
+    // browser — give them Node globals (process, etc.) so ESLint doesn't
+    // flag `process.env` references.
+    files: ['tests/**/*.{js,jsx}', 'api/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
 ])
