@@ -40,6 +40,17 @@ export function bboxToZoom(bbox) {
 
 const EARTH_RADIUS_M = 6378137;
 
+export const MAX_AREA_KM2 = 100;
+
+const toRad = (deg) => (deg * Math.PI) / 180;
+
+export function computeAreaKm2({ west, south, east, north }) {
+  const midLat = (north + south) / 2;
+  const widthM = toRad(east - west) * EARTH_RADIUS_M * Math.cos(toRad(midLat));
+  const heightM = toRad(north - south) * EARTH_RADIUS_M;
+  return Math.abs(widthM * heightM) / 1_000_000;
+}
+
 /**
  * Build a projector from geo (lon, lat) to scene XZ coordinates,
  * using the same transformation as buildTerrainGeometry.

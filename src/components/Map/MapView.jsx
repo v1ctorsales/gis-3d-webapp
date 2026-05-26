@@ -3,8 +3,16 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { TerraDraw, TerraDrawRectangleMode } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
-import { polygonToBbox } from "../../utils/geo";
+import { computeAreaKm2, MAX_AREA_KM2, polygonToBbox } from "../../utils/geo";
 import styles from "./MapView.module.css";
+
+const RECT_FILL_OK = "#3388ff";
+const RECT_FILL_OVER = "#ff3b3b";
+
+function isFeatureOverLimit(feature) {
+  if (!feature?.geometry?.coordinates?.[0]) return false;
+  return computeAreaKm2(polygonToBbox(feature)) > MAX_AREA_KM2;
+}
 
 const SATELLITE_STYLE = {
   version: 8,
@@ -74,9 +82,18 @@ const MapView = forwardRef(function MapView({ onSelectionChange }, ref) {
     map.addControl(new maplibregl.ScaleControl(), "bottom-left");
 
     map.on("load", () => {
+      const rectStyle = (f) =>
+        isFeatureOverLimit(f) ? RECT_FILL_OVER : RECT_FILL_OK;
       const draw = new TerraDraw({
         adapter: new TerraDrawMapLibreGLAdapter({ map }),
-        modes: [new TerraDrawRectangleMode()],
+        modes: [
+          new TerraDrawRectangleMode({
+            styles: {
+              fillColor: rectStyle,
+              outlineColor: rectStyle,
+            },
+          }),
+        ],
       });
       drawRef.current = draw;
 

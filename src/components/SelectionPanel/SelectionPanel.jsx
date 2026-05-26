@@ -1,18 +1,5 @@
+import { computeAreaKm2, MAX_AREA_KM2 } from "../../utils/geo";
 import styles from "./SelectionPanel.module.css";
-
-// Limite de área da seleção em km². Ajustar conforme o
-// custo de extração + geração do mesh 3D do seu pipeline.
-const MAX_AREA_KM2 = 100;
-
-const EARTH_RADIUS_M = 6_378_137;
-const toRad = (deg) => (deg * Math.PI) / 180;
-
-function computeAreaKm2({ west, south, east, north }) {
-  const midLat = (north + south) / 2;
-  const widthM = toRad(east - west) * EARTH_RADIUS_M * Math.cos(toRad(midLat));
-  const heightM = toRad(north - south) * EARTH_RADIUS_M;
-  return Math.abs(widthM * heightM) / 1_000_000;
-}
 
 export default function SelectionPanel({ selection, onClear, onConfirm }) {
   const areaKm2 = selection ? computeAreaKm2(selection) : 0;
