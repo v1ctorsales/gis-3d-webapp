@@ -1,34 +1,69 @@
-const OVERPASS_URL =
-  import.meta.env.VITE_OVERPASS_URL ||
-  (import.meta.env.PROD
-    ? "/api/overpass"
-    : "https://overpass.private.coffee/api/interpreter");
+const ENV_OVERRIDE = import.meta.env.VITE_OVERPASS_URL;
+const IS_PROD = import.meta.env.PROD;
+
+// In prod, the Vercel edge proxy at /api/overpass already races mirrors
+// (see api/overpass.js). In dev there's no proxy, so we replicate the
+// race here — without it, a single slow mirror (e.g. overpass.private.coffee
+// hanging for 60s) makes every layer toggle fail.
+// `overpass.osm.ch` is deliberately excluded: it responds in ~200ms with a
+// valid-shape JSON body whose `elements` array is always empty and whose
+// `timestamp_osm_base` is "114469" instead of an ISO date — i.e. the database
+// behind it is broken. Because it's the fastest responder, including it makes
+// it win every Promise.any race below and starves real layers of data.
+const DEV_MIRRORS = [
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://overpass.openstreetmap.fr/api/interpreter",
+];
 
 const TIMEOUT_MS = 60000;
 
+function shortHost(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /**
- * Raw Overpass request. Returns parsed JSON; throws on non-2xx or abort.
- * `meta` lets a caller pass through context for logging.
+ * Hit one Overpass endpoint. Resolves to parsed JSON; rejects with a tagged
+ * Overpass{Http,Timeout}Error otherwise. The shared `winnerSignal` lets a
+ * racing caller cancel losers as soon as one mirror has won.
  */
-export async function overpassFetch(query, meta = {}) {
+async function fetchOne(url, query, label, winnerSignal) {
+  const host = shortHost(url);
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  const label = meta.label ? `[osm/${meta.label}]` : "[osm]";
+  const onWin = winnerSignal
+    ? () => ctrl.abort()
+    : null;
+  if (winnerSignal && onWin) {
+    if (winnerSignal.aborted) ctrl.abort();
+    else winnerSignal.addEventListener("abort", onWin, { once: true });
+  }
+  const timeoutHandle = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   const startedAt = performance.now();
 
   try {
     let resp;
-    if (OVERPASS_URL.startsWith("/")) {
-      // Proxy próprio: usa GET para o Vercel cachear no edge
-      const url = `${OVERPASS_URL}?q=${encodeURIComponent(query)}`;
-      console.log(`${label} GET ${OVERPASS_URL} (${query.length} chars)`);
-      resp = await fetch(url, { signal: ctrl.signal });
+    if (url.startsWith("/")) {
+      // Proxy: GET so Vercel can edge-cache on the URL.
+      const u = `${url}?q=${encodeURIComponent(query)}`;
+      console.log(`${label} ${host} GET ${url} (${query.length} chars)`);
+      resp = await fetch(u, { signal: ctrl.signal });
     } else {
-      console.log(`${label} POST ${OVERPASS_URL} (${query.length} chars)`);
-      resp = await fetch(OVERPASS_URL, {
+      // Standard Overpass POST format: form-urlencoded `data=<query>`.
+      // The raw `text/plain` variant is unofficial; some mirrors (e.g.
+      // overpass.osm.ch) accept it but silently return an empty result set,
+      // which then wins the parallel race below and starves every layer of
+      // real data. Match the proxy in api/overpass.js exactly.
+      console.log(`${label} ${host} POST (${query.length} chars)`);
+      resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: query,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
         signal: ctrl.signal,
       });
     }
@@ -36,44 +71,109 @@ export async function overpassFetch(query, meta = {}) {
       const errText = await resp.text().catch(() => "");
       const elapsed = Math.round(performance.now() - startedAt);
       console.warn(
-        `${label} ✗ HTTP ${resp.status} after ${elapsed}ms`,
+        `${label} ${host} ✗ HTTP ${resp.status} after ${elapsed}ms`,
         errText.slice(0, 200),
       );
-      throw new OverpassHttpError(resp.status, resp.statusText, elapsed);
+      throw new OverpassHttpError(resp.status, resp.statusText, elapsed, host);
     }
-    // Read once as text to measure size, then parse.
     const text = await resp.text();
     const elapsed = Math.round(performance.now() - startedAt);
     const sizeKb = Math.round(text.length / 1024);
-    console.log(`${label} ✓ ${resp.status} · ${sizeKb} kB · ${elapsed}ms`);
+    console.log(`${label} ${host} ✓ ${resp.status} · ${sizeKb} kB · ${elapsed}ms`);
     return JSON.parse(text);
   } catch (err) {
+    const elapsed = Math.round(performance.now() - startedAt);
     if (err.name === "AbortError") {
-      const elapsed = Math.round(performance.now() - startedAt);
-      console.warn(`${label} ✗ client timeout after ${elapsed}ms (${TIMEOUT_MS}ms cap)`);
-      throw new OverpassTimeoutError(elapsed);
+      if (winnerSignal?.aborted) {
+        // Another mirror won — quiet cancel, not a real failure.
+        throw new OverpassCancelledError(host, elapsed);
+      }
+      console.warn(
+        `${label} ${host} ✗ client timeout after ${elapsed}ms (${TIMEOUT_MS}ms cap)`,
+      );
+      throw new OverpassTimeoutError(elapsed, host);
     }
     throw err;
   } finally {
-    clearTimeout(t);
+    clearTimeout(timeoutHandle);
+    if (winnerSignal && onWin) {
+      winnerSignal.removeEventListener("abort", onWin);
+    }
+  }
+}
+
+/**
+ * Raw Overpass request. Returns parsed JSON; throws on failure.
+ * In dev (no proxy, no explicit VITE_OVERPASS_URL override) races
+ * DEV_MIRRORS in parallel — first 2xx wins, the rest are aborted.
+ * `meta.label` is prepended to every log line so each caller's traffic
+ * is easy to follow in the console.
+ */
+export async function overpassFetch(query, meta = {}) {
+  const label = meta.label ? `[osm/${meta.label}]` : "[osm]";
+
+  if (ENV_OVERRIDE) return fetchOne(ENV_OVERRIDE, query, label, null);
+  if (IS_PROD) return fetchOne("/api/overpass", query, label, null);
+
+  // Dev: race all mirrors. Without this, one slow mirror = whole layer fails.
+  const winnerCtrl = new AbortController();
+  const overallStart = performance.now();
+  console.log(
+    `${label} racing ${DEV_MIRRORS.length} mirrors in parallel`,
+  );
+  const attempts = DEV_MIRRORS.map((m) =>
+    fetchOne(m, query, label, winnerCtrl.signal),
+  );
+  try {
+    const data = await Promise.any(attempts);
+    winnerCtrl.abort();
+    const totalMs = Math.round(performance.now() - overallStart);
+    console.log(`${label} ✓ race won in ${totalMs}ms`);
+    return data;
+  } catch (aggregate) {
+    const totalMs = Math.round(performance.now() - overallStart);
+    const errs = aggregate.errors || [aggregate];
+    const summary = errs
+      .filter((e) => !(e instanceof OverpassCancelledError))
+      .map((e) => `${e.host || "?"}: ${e.message}`);
+    console.warn(
+      `${label} ✗ all ${DEV_MIRRORS.length} mirrors failed in ${totalMs}ms:`,
+      summary,
+    );
+    // Promote the first real failure so callers see a useful error.
+    const real = errs.find((e) => !(e instanceof OverpassCancelledError));
+    if (real) throw real;
+    throw new OverpassTimeoutError(totalMs, "all-mirrors");
   }
 }
 
 class OverpassHttpError extends Error {
-  constructor(status, statusText, elapsedMs) {
-    super(`Overpass ${status}: ${statusText}`);
+  constructor(status, statusText, elapsedMs, host) {
+    super(`Overpass ${status} from ${host || "?"}: ${statusText}`);
     this.status = status;
     this.statusText = statusText;
     this.elapsedMs = elapsedMs;
+    this.host = host;
     this.name = "OverpassHttpError";
   }
 }
 
 class OverpassTimeoutError extends Error {
-  constructor(elapsedMs) {
-    super(`Overpass client timeout after ${elapsedMs}ms`);
+  constructor(elapsedMs, host) {
+    super(`Overpass client timeout after ${elapsedMs}ms (${host || "?"})`);
     this.elapsedMs = elapsedMs;
+    this.host = host;
     this.name = "OverpassTimeoutError";
+  }
+}
+
+class OverpassCancelledError extends Error {
+  constructor(host, elapsedMs) {
+    super(`${host} cancelled (another mirror won)`);
+    this.host = host;
+    this.elapsedMs = elapsedMs;
+    this.cancelled = true;
+    this.name = "OverpassCancelledError";
   }
 }
 
@@ -120,28 +220,56 @@ function parseHeight(tags) {
 }
 
 export async function fetchBuildings(bbox) {
-  const q = `
-    [out:json][timeout:30];
-    way["building"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
-    out body;
-    >;
-    out skel qt;
-  `;
-  const data = await overpassFetch(q);
-  const nodes = indexNodes(data.elements);
-
-  const buildings = [];
-  for (const el of data.elements) {
-    if (el.type !== "way" || !el.tags?.building) continue;
-    const coords = wayCoords(el, nodes);
-    if (coords.length < 3) continue;
-    buildings.push({
-      id: el.id,
-      coords,
-      height: parseHeight(el.tags),
+  console.group(
+    `[osm/buildings] fetchBuildings bbox=${bbox.west.toFixed(4)},${bbox.south.toFixed(4)} → ${bbox.east.toFixed(4)},${bbox.north.toFixed(4)}`,
+  );
+  const overallStart = performance.now();
+  try {
+    const q = `
+      [out:json][timeout:30];
+      way["building"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+      out body;
+      >;
+      out skel qt;
+    `;
+    const data = await overpassFetch(q, { label: "buildings" });
+    const elements = data.elements || [];
+    const counts = { node: 0, way: 0, relation: 0 };
+    for (const el of elements) counts[el.type] = (counts[el.type] || 0) + 1;
+    console.log(`[osm/buildings] response summary:`, {
+      total: elements.length,
+      ...counts,
     });
+
+    const nodes = indexNodes(elements);
+    const buildings = [];
+    const heightSources = { explicit: 0, levels: 0, default: 0 };
+    for (const el of elements) {
+      if (el.type !== "way" || !el.tags?.building) continue;
+      const coords = wayCoords(el, nodes);
+      if (coords.length < 3) continue;
+      if (el.tags.height || el.tags["building:height"]) heightSources.explicit++;
+      else if (el.tags["building:levels"]) heightSources.levels++;
+      else heightSources.default++;
+      buildings.push({
+        id: el.id,
+        coords,
+        height: parseHeight(el.tags),
+      });
+    }
+    const totalMs = Math.round(performance.now() - overallStart);
+    console.log(
+      `[osm/buildings] parsed ${buildings.length} building(s) — heights:`,
+      heightSources,
+    );
+    console.log(`[osm/buildings] ✓ done in ${totalMs}ms`);
+    return buildings;
+  } catch (err) {
+    console.error(`[osm/buildings] ✗ failed:`, err);
+    throw err;
+  } finally {
+    console.groupEnd();
   }
-  return buildings;
 }
 
 // Linestring waterways we render as buffered ribbons. `ditch` is intentionally
@@ -456,21 +584,55 @@ function parseWater(osmData) {
 }
 
 export async function fetchRoads(bbox) {
-  const { south, west, north, east } = bbox;
-  const query = `
-    [out:json][timeout:25];
-    (
-      way["highway"]
-        ["highway"!~"^(steps|elevator|construction|proposed|raceway)$"]
-        (${south},${west},${north},${east});
-    );
-    out body;
-    >;
-    out skel qt;
-  `.trim();
+  console.group(
+    `[osm/roads] fetchRoads bbox=${bbox.west.toFixed(4)},${bbox.south.toFixed(4)} → ${bbox.east.toFixed(4)},${bbox.north.toFixed(4)}`,
+  );
+  const overallStart = performance.now();
+  try {
+    const { south, west, north, east } = bbox;
+    const query = `
+      [out:json][timeout:25];
+      (
+        way["highway"]
+          ["highway"!~"^(steps|elevator|construction|proposed|raceway)$"]
+          (${south},${west},${north},${east});
+      );
+      out body;
+      >;
+      out skel qt;
+    `.trim();
 
-  const data = await overpassFetch(query);
-  return parseRoads(data);
+    const data = await overpassFetch(query, { label: "roads" });
+    const elements = data.elements || [];
+    const counts = { node: 0, way: 0, relation: 0 };
+    for (const el of elements) counts[el.type] = (counts[el.type] || 0) + 1;
+    console.log(`[osm/roads] response summary:`, {
+      total: elements.length,
+      ...counts,
+    });
+
+    const roads = parseRoads(data);
+    const byType = {};
+    let tunnels = 0;
+    let bridges = 0;
+    for (const r of roads) {
+      byType[r.type] = (byType[r.type] || 0) + 1;
+      if (r.tunnel) tunnels++;
+      if (r.bridge) bridges++;
+    }
+    console.log(
+      `[osm/roads] parsed ${roads.length} road(s) (${tunnels} tunnel · ${bridges} bridge) — types:`,
+      byType,
+    );
+    const totalMs = Math.round(performance.now() - overallStart);
+    console.log(`[osm/roads] ✓ done in ${totalMs}ms`);
+    return roads;
+  } catch (err) {
+    console.error(`[osm/roads] ✗ failed:`, err);
+    throw err;
+  } finally {
+    console.groupEnd();
+  }
 }
 
 function parseRoads(data) {

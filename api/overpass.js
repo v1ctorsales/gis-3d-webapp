@@ -1,11 +1,16 @@
 export const config = { runtime: "edge" };
 
+// `overpass.osm.ch` is deliberately excluded: it responds in ~200ms with a
+// valid-shape JSON body whose `elements` array is always empty and whose
+// `timestamp_osm_base` is "114469" instead of an ISO date — i.e. the database
+// behind it is broken. Because it's the fastest responder, including it makes
+// it win every Promise.any race below and starves real layers of data.
 const MIRRORS = [
   "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
+  "https://overpass.openstreetmap.fr/api/interpreter",
 ];
 
 // Vercel edge functions get ~25 s. Race all mirrors in parallel and let
