@@ -42,6 +42,7 @@ import {
   makeSampleElevation,
   makeSceneXZElevationSampler,
 } from "../../utils/geo";
+import SceneExporter from "./SceneExporter";
 
 const OSM_ATTRIBUTION = "© OpenStreetMap contributors";
 
@@ -98,6 +99,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [hypsoBandM, setHypsoBandM] = useState(50);
   const [hypsoBandAuto, setHypsoBandAuto] = useState(null);
   const roadsCacheRef = useRef({});
+  const exporterRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
 
   // --- Derived terrain artifacts ---
   const buildResult = useMemo(() => {
@@ -132,18 +135,29 @@ export default function Viewer3D({ bbox, onBack }) {
 
   const hillshadeCanvas = useMemo(() => {
     if (terrain.status !== "ready" || !pixelSizeM) return null;
-    return buildHillshadeCanvas(terrain.heightmap, pixelSizeM, undefined, hillshadeZ);
+    return buildHillshadeCanvas(
+      terrain.heightmap,
+      pixelSizeM,
+      undefined,
+      hillshadeZ,
+    );
   }, [terrain, pixelSizeM, hillshadeZ]);
 
   const activeTexture = (() => {
     if (terrain.status !== "ready") return null;
     switch (surface) {
-      case "imagery": return terrain.satellite;
-      case "hypsometric": return hypsometricCanvas;
-      case "slope": return slopeCanvas;
-      case "aspect": return aspectCanvas;
-      case "hillshade": return hillshadeCanvas;
-      default: return terrain.satellite;
+      case "imagery":
+        return terrain.satellite;
+      case "hypsometric":
+        return hypsometricCanvas;
+      case "slope":
+        return slopeCanvas;
+      case "aspect":
+        return aspectCanvas;
+      case "hillshade":
+        return hillshadeCanvas;
+      default:
+        return terrain.satellite;
     }
   })();
 
@@ -257,7 +271,8 @@ export default function Viewer3D({ bbox, onBack }) {
   const [floodInitForHM, setFloodInitForHM] = useState(null);
   if (terrain.status === "ready" && floodInitForHM !== terrain.heightmap) {
     setFloodInitForHM(terrain.heightmap);
-    const mid = (terrain.heightmap.minElevation + terrain.heightmap.maxElevation) / 2;
+    const mid =
+      (terrain.heightmap.minElevation + terrain.heightmap.maxElevation) / 2;
     setFloodLevel(Math.round(mid));
   }
 
@@ -265,9 +280,9 @@ export default function Viewer3D({ bbox, onBack }) {
   // Same pattern as floodInitForHM above.
   const [hillshadeInitForHM, setHillshadeInitForHM] = useState(null);
   if (
-    terrain.status === "ready"
-    && pixelSizeM
-    && hillshadeInitForHM !== terrain.heightmap
+    terrain.status === "ready" &&
+    pixelSizeM &&
+    hillshadeInitForHM !== terrain.heightmap
   ) {
     setHillshadeInitForHM(terrain.heightmap);
     const z = suggestHillshadeZFactor(terrain.heightmap, pixelSizeM);
@@ -538,11 +553,7 @@ export default function Viewer3D({ bbox, onBack }) {
             <ProfileLine points={committedProfileLinePoints} />
           )}
           {previewProfile && (
-            <ProfileLine
-              points={previewProfile.points}
-              dashed
-              opacity={0.75}
-            />
+            <ProfileLine points={previewProfile.points} dashed opacity={0.75} />
           )}
           {committedProfileLinePoints &&
             hoveredProfileIndex != null &&
@@ -571,6 +582,7 @@ export default function Viewer3D({ bbox, onBack }) {
             args={[600, 30, "#333", "#1f1f1f"]}
             position={[0, buildResult.bounds.minY - 0.5, 0]}
           />
+          <SceneExporter ref={exporterRef} />
           <OrbitControls
             enableDamping
             dampingFactor={0.05}
@@ -640,7 +652,10 @@ export default function Viewer3D({ bbox, onBack }) {
                 <span className={styles.value}>
                   {hillshadeZ.toFixed(1)}×
                   {hillshadeZAuto != null && (
-                    <span className={styles.muted}> (auto {hillshadeZAuto.toFixed(1)}×)</span>
+                    <span className={styles.muted}>
+                      {" "}
+                      (auto {hillshadeZAuto.toFixed(1)}×)
+                    </span>
                   )}
                 </span>
                 <input
@@ -659,7 +674,10 @@ export default function Viewer3D({ bbox, onBack }) {
                 <span className={styles.value}>
                   {hypsoBandM} m
                   {hypsoBandAuto != null && (
-                    <span className={styles.muted}> (auto {Math.round(hypsoBandAuto)})</span>
+                    <span className={styles.muted}>
+                      {" "}
+                      (auto {Math.round(hypsoBandAuto)})
+                    </span>
                   )}
                 </span>
                 <input
@@ -837,7 +855,9 @@ export default function Viewer3D({ bbox, onBack }) {
                   max={200}
                   step={5}
                   value={contourSpacing}
-                  onChange={(e) => setContourSpacing(parseInt(e.target.value, 10))}
+                  onChange={(e) =>
+                    setContourSpacing(parseInt(e.target.value, 10))
+                  }
                 />
               </label>
             )}
@@ -853,26 +873,34 @@ export default function Viewer3D({ bbox, onBack }) {
                 </label>
                 <label className={styles.slider}>
                   <span>Line width</span>
-                  <span className={styles.value}>{contourWidth.toFixed(1)} px</span>
+                  <span className={styles.value}>
+                    {contourWidth.toFixed(1)} px
+                  </span>
                   <input
                     type="range"
                     min={1}
                     max={6}
                     step={0.5}
                     value={contourWidth}
-                    onChange={(e) => setContourWidth(parseFloat(e.target.value))}
+                    onChange={(e) =>
+                      setContourWidth(parseFloat(e.target.value))
+                    }
                   />
                 </label>
                 <label className={styles.slider}>
                   <span>Opacity</span>
-                  <span className={styles.value}>{contourOpacity.toFixed(2)}</span>
+                  <span className={styles.value}>
+                    {contourOpacity.toFixed(2)}
+                  </span>
                   <input
                     type="range"
                     min={0.2}
                     max={1}
                     step={0.05}
                     value={contourOpacity}
-                    onChange={(e) => setContourOpacity(parseFloat(e.target.value))}
+                    onChange={(e) =>
+                      setContourOpacity(parseFloat(e.target.value))
+                    }
                   />
                 </label>
               </div>
@@ -900,7 +928,9 @@ export default function Viewer3D({ bbox, onBack }) {
                     max={Math.ceil(terrain.heightmap.maxElevation)}
                     step={1}
                     value={floodLevel}
-                    onChange={(e) => setFloodLevel(parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      setFloodLevel(parseInt(e.target.value, 10))
+                    }
                   />
                 </label>
                 {flood && (
@@ -932,7 +962,8 @@ export default function Viewer3D({ bbox, onBack }) {
             </label>
             {profileTool && (
               <div className={styles.muted}>
-                {profilePoints.length === 0 && "Click terrain to set start point"}
+                {profilePoints.length === 0 &&
+                  "Click terrain to set start point"}
                 {profilePoints.length === 1 && "Click again to set end point"}
                 {profilePoints.length === 2 && "Click again to reset"}
               </div>
@@ -953,6 +984,22 @@ export default function Viewer3D({ bbox, onBack }) {
             km² · Elevation {Math.round(terrain.heightmap.minElevation)}–
             {Math.round(terrain.heightmap.maxElevation)} m
           </div>
+          <fieldset className={styles.group}>
+            <legend>Export</legend>
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => {
+                setExporting(true);
+                exporterRef.current?.export(
+                  () => setExporting(false),
+                  () => setExporting(false),
+                );
+              }}
+            >
+              {exporting ? "Exporting…" : "Export GLB"}
+            </button>
+          </fieldset>
         </div>
       )}
 
