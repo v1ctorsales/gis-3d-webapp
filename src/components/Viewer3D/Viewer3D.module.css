@@ -37,6 +37,9 @@
 }
 
 .panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
   position: absolute;
   top: 1rem;
   right: 1rem;
@@ -46,9 +49,22 @@
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  width: 240px;
+  width: 18rem;
   backdrop-filter: blur(8px);
   font-size: 0.85rem;
+}
+
+.panelScroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.panelFooter {
+  flex-shrink: 0;
+  border-top: 1px solid #333;
+  padding-top: 8px;
 }
 
 .group {
@@ -161,7 +177,7 @@
 .attribution {
   position: absolute;
   bottom: 0.5rem;
-  right: 0.75rem;
+  right: 19.5rem;
   z-index: 2;
   font-size: 0.68rem;
   color: rgba(255, 255, 255, 0.7);
@@ -230,4 +246,27 @@
 
 .subPanel .check {
   font-size: 0.8rem;
+}
+.exportButton {
+  width: 100%;
+  padding: 0.6rem;
+  background: #2d7af7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: background 0.15s ease;
+}
+
+.exportButton:hover:not(:disabled) {
+  background: #1a65e0;
+}
+
+.exportButton:disabled {
+  background: #1a3a6e;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
